@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>NCSC Cash Gift Payroll System</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="ncsc_payroll.css"/>
+</head>
+<body>
+
+<!-- ═══════════ TOPBAR ═══════════ -->
+<div class="topbar">
+  <div class="topbar-brand">
+    <div class="topbar-seal">SC</div>
+    <div class="topbar-titles">
+      <div class="topbar-name">NCSC Cash Gift Payroll System</div>
+      <div class="topbar-sub">National Commission of Senior Citizens</div>
+    </div>
+  </div>
+  <div class="topbar-nav">
+    <button class="nav-tab active" onclick="switchPage('beneficiaries')">Beneficiaries</button>
+    <button class="nav-tab" onclick="switchPage('payout')">Payout Generator</button>
+    <button class="nav-tab" onclick="switchPage('settings')">Settings</button>
+  </div>
+  <div class="topbar-right">
+    <div class="ra-badge">R.A. 11982 · Expanded Centenarians Act</div>
+  </div>
+</div>
+
+<div class="main">
+
+<!-- ══════════════════════════════════════
+     PAGE: BENEFICIARIES
+══════════════════════════════════════ -->
+<div class="page active" id="page-beneficiaries">
+
+  <!-- Stats: clickable category filters -->
+  <div class="stats-row" id="stats-row"></div>
+
+  <!-- Table -->
+  <div class="table-card">
+    <div class="table-header">
+      <div class="table-header-left">
+        <div class="table-title" id="table-title">All Beneficiaries</div>
+        <div class="filter-chip" id="filter-chip" style="display:none" onclick="clearCategoryFilter()">
+          <span id="filter-chip-label"></span>
+          <span class="chip-x">×</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="search-input" class="form-control" style="width:220px;padding:7px 12px;font-size:12px" placeholder="Search name, batch…" oninput="renderTable()"/>
+        <button class="btn btn-gold" onclick="openModal()">＋ Add Beneficiary</button>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table class="data-tbl">
+        <thead><tr>
+          <th>#</th><th>Batch</th><th>Last Name</th><th>First Name</th>
+          <th>Middle</th><th>Ext</th><th>Birthdate</th><th>Age</th>
+          <th>Sex</th><th>Category</th><th>Status</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="tbl-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     PAGE: PAYOUT
+══════════════════════════════════════ -->
+<div class="page" id="page-payout">
+  <div class="alert alert-info">ℹ️ Only <strong>Active</strong> beneficiaries are included. Sorted by Last Name → First Name. 5 beneficiaries per page.</div>
+
+  <div class="payout-config">
+    <div class="payout-config-title">Payout Configuration</div>
+    <div class="form-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">
+      <div class="form-group"><label class="form-label">Regional Office</label><input id="p-region" class="form-control" placeholder="e.g. NCR"/></div>
+      <div class="form-group"><label class="form-label">Province</label><input id="p-province" class="form-control" placeholder="e.g. Metro Manila"/></div>
+      <div class="form-group"><label class="form-label">City / Municipality</label><input id="p-city" class="form-control" placeholder="e.g. Quezon City"/></div>
+      <div class="form-group"><label class="form-label">Cash Gift Amount (₱) *</label><input id="p-amount" class="form-control" type="number" value="10000"/></div>
+      <div class="form-group"><label class="form-label">Batch Filter</label><select id="p-batch" class="form-control"><option value="">All Batches</option></select></div>
+      <div class="form-group"><label class="form-label">Category Filter</label>
+        <select id="p-cat-filter" class="form-control">
+          <option value="">All Categories</option>
+          <option value="Octogenarian">Octogenarian</option>
+          <option value="Nonagenarian">Nonagenarian</option>
+          <option value="Centenarian">Centenarian</option>
+        </select>
+      </div>
+    </div>
+    <div class="action-bar">
+      <button class="btn btn-accent" onclick="previewPayroll()">🔍 Preview</button>
+      <div class="sep"></div>
+      <button class="btn btn-pdf" onclick="savePDF()">📥 Save as PDF</button>
+      <button class="btn btn-success" onclick="window.print()">🖨️ Print</button>
+    </div>
+    <div class="progress-badge" id="pdf-progress">
+      <div class="progress-spinner"></div>
+      <span id="pdf-progress-text">Generating PDF…</span>
+    </div>
+  </div>
+
+  <div id="payout-stats" class="stats-row" style="display:none;grid-template-columns:repeat(4,1fr)"></div>
+</div>
+
+<!-- ══════════════════════════════════════
+     PAGE: SETTINGS
+══════════════════════════════════════ -->
+<div class="page" id="page-settings">
+  <div class="settings-card">
+    <div class="settings-title">Signatories</div>
+    <div class="alert alert-warn">⚠️ These names are printed on every payroll page. Update whenever signatories change.</div>
+    <div class="form-grid" style="grid-template-columns:1fr">
+      <div class="form-group"><label class="form-label">Acting / In-Charge-of-Office (Preparer)</label><input id="s-preparer" class="form-control" placeholder="Full Name"/></div>
+      <div class="form-group"><label class="form-label">Head of Office (Approver)</label><input id="s-approver" class="form-control" placeholder="Full Name"/></div>
+      <div class="form-group"><label class="form-label">SDO — Disbursing Officer</label><input id="s-sdo" class="form-control" placeholder="Full Name"/></div>
+      <div class="form-group"><label class="form-label">Officer Present During Payout 1</label><input id="s-officer1" class="form-control" placeholder="Full Name"/></div>
+      <div class="form-group"><label class="form-label">Officer Present During Payout 2</label><input id="s-officer2" class="form-control" placeholder="Full Name"/></div>
+    </div>
+    <div style="margin-top:18px;display:flex;gap:10px">
+      <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
+    </div>
+  </div>
+  <div class="settings-card">
+    <div class="settings-title">Data Management</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="exportData()">📤 Export JSON Backup</button>
+      <button class="btn btn-danger" onclick="clearAllData()">🗑️ Clear All Beneficiaries</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- /main -->
+
+<!-- ══════════════════════════════════════
+     ADD / EDIT MODAL
+══════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal" id="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">＋ Add Beneficiary</div>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="f-id"/>
+      <div class="form-grid">
+        <div class="form-group"><label class="form-label">Last Name *</label><input id="f-lname" class="form-control" placeholder="Dela Cruz"/></div>
+        <div class="form-group"><label class="form-label">First Name *</label><input id="f-fname" class="form-control" placeholder="Juan"/></div>
+        <div class="form-group"><label class="form-label">Middle Name</label><input id="f-mname" class="form-control" placeholder="Santos"/></div>
+        <div class="form-group"><label class="form-label">Extension</label><input id="f-ext" class="form-control" placeholder="Jr. / Sr. / III"/></div>
+        <div class="form-group"><label class="form-label">Birthdate *</label><input id="f-bdate" class="form-control" type="date"/></div>
+        <div class="form-group"><label class="form-label">Sex *</label>
+          <select id="f-sex" class="form-control"><option value="">— Select —</option><option>Male</option><option>Female</option></select>
+        </div>
+        <div class="form-group"><label class="form-label">Category</label>
+          <select id="f-cat" class="form-control">
+            <option value="">Auto (computed from age)</option>
+            <option value="Octogenarian">Octogenarian (80–89)</option>
+            <option value="Nonagenarian">Nonagenarian (90–99)</option>
+            <option value="Centenarian">Centenarian (100+)</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Status</label>
+          <select id="f-status" class="form-control">
+            <option value="Active">Active / Available</option>
+            <option value="Deceased">Deceased</option>
+            <option value="Unavailable">Unavailable</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Date of Death</label><input id="f-death" class="form-control" type="date"/></div>
+        <div class="form-group"><label class="form-label">Batch Code</label><input id="f-batch" class="form-control" placeholder="NCR-2025-01"/></div>
+        <div class="form-group span2"><label class="form-label">Remarks</label><input id="f-remarks" class="form-control" placeholder="Optional notes"/></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="clearForm()">↺ Clear Fields</button>
+      <button class="btn btn-primary" onclick="saveBeneficiary()">💾 Save Beneficiary</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     PREVIEW OVERLAY
+══════════════════════════════════════ -->
+<div class="preview-overlay" id="preview-overlay">
+  <div class="preview-bar">
+    <span class="preview-bar-title">📋 Payroll Preview</span>
+    <button class="btn btn-ghost" style="color:#fff;border-color:#ffffff30" onclick="closePreview()">✕ Close</button>
+    <button class="btn btn-pdf" onclick="savePDF()">📥 Save as PDF</button>
+    <button class="btn btn-success" onclick="window.print()">🖨️ Print</button>
+  </div>
+  <div class="preview-scroll" id="preview-scroll"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="ncsc_payroll.js"></script>
+</body>
+</html>
